@@ -1,36 +1,25 @@
 services:
-  # This is Swetrix user interface application, it's used to display the analytics data, render charts, etc.
-  nginx:
-    image: nginx:alpine
-    restart: always
-    ports:
-      - "3001:80"  # Coolify will handle SSL termination
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - swetrix
-      - swetrix-api
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/ping"]
-      interval: 30s
-      start_period: 10s
+  # Single service that handles both frontend and API
   swetrix:
     image: swetrix/swetrix-fe:v3.3.1
     restart: always
+    ports:
+      - "3001:3000"
     depends_on:
       - swetrix-api
     environment:
-      - API_URL=${API_URL}
+      - API_URL=http://swetrix-api:5005  # Internal API URL
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/ping || exit 1"]
       interval: 30s
       start_period: 15s
 
-  # This is Swetrix API, it's purpose is to collect incoming analytical events and serve the data to the UI
   swetrix-api:
     image: swetrix/swetrix-api:v3.3.1
     restart: always
     container_name: swetrix-api
+    ports:
+      - "5005:5005"  # Expose API port
     environment:
       - JWT_ACCESS_TOKEN_SECRET=${JWT_ACCESS_TOKEN_SECRET}
       - JWT_REFRESH_TOKEN_SECRET=${JWT_REFRESH_TOKEN_SECRET}
@@ -84,17 +73,15 @@ services:
       - SYS_NICE
     volumes:
       - swetrix-events-data:/var/lib/clickhouse
-      # Disable logging
       - ./clickhouse/reduce-logs.xml:/etc/clickhouse-server/config.d/reduce-logs.xml:ro
       - ./clickhouse/disable-user-logging.xml:/etc/clickhouse-server/users.d/disable-user-logging.xml:ro
-
-      # Reduce RAM usage
       - ./clickhouse/preserve-ram-config.xml:/etc/clickhouse-server/config.d/preserve-ram-config.xml:ro
       - ./clickhouse/preserve-ram-user.xml:/etc/clickhouse-server/users.d/preserve-ram-user.xml:ro
     ulimits:
       nofile:
         soft: 262144
         hard: 262144
+
 volumes:
   swetrix-events-data:
     driver: local
